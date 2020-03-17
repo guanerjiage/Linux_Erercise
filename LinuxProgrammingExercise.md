@@ -91,6 +91,65 @@ The following 9 bit show the properties for user, group and others whether they 
 ### how to change file properties
 
 - file type: it is setted when the file is created and could never be changed.
-- file athority bits: setted when file is created, could be changed by command _chmod_ both in 8-bit number way or symbol way
-- link number: it is automatically changed when new process open of close the file
-- owner and group: setted when created, notice that the owner and group are mostly setted as the user who run the create function, if set_user_id bit is setted, it will set its owner as the owner of program. 
+- file athority bits: setted when file is created, could be changed by command _chmod_ both in 8-bit number way or symbol way.
+- link number: it is automatically changed when new process open of close the file.
+- owner and group: setted when created, notice that the owner and group are mostly setted as the user who run the create function, if set_user_id bit is setted, it will set its owner as the owner of program.
+- size: it will automatically calculate the size of the file, syscall creat could set the size of file to 0, but no other function to reduce the size of file directly.
+- time: three time properties of file is modification time, last access time and last property changed time. Normally, system will change these time automatically. The command _touch_ could reset the modification time and last access time.
+
+## File system
+
+### basic knowledge of file system
+
+From user perspective, the file system orgnized as a directory tree. However, physically, the whole file system stored linearly on the disk and devided into three parts, superblock, inode table, and data section.
+
+- superblock saves the information about file system, which contant size of each section, information of unused blocks.
+- inode list saves inodes, which is a structure saving file properities mentioned in the last section of files, each inode have the same size.
+- data section saves real data about the file, all the blocks have same size while large file have several blocks to save the data.
+
+### The procedure of creating a new file have four main steps
+
+- save properties: the kernel will find an empty inode and save corresponding information into the inode
+- save data: the kernel calculate the require number of block and find them in the free list of blocks, copy the data into free blocks.
+- save block distribution: save the index of used block into inode structure, so later we could find the approperate block.
+- add to directory: kernal add the file name and inode index to the directory file, which connect the file name with his location and inode.
+
+Using the command "ls -lia dirname" to see the content of directory.
+Specially, more than one file name can point to same inode index. All the file read commands are achieved by passing filename to funtion open, and open will search file name in the directory, access inode to get file properties and locating sections containing file data. One additional problem is that the size of inode is fixed, if the file is large, there will not be enough space for section index. The system fix this by introducing secondary index, for the first 10 out of 14 section indexs are saving in the inode and the last 4 are saving in the data section that 11st section index points to.
+
+    ls -lia dirname //see the content of directory
+    ls -i //including inode number in ls command
+    mkdir path name//creat a new directory
+    rmdir path //remove a directory, it has to be empty with only two entries
+    rm path //remove an entry from directory, it use syscall unlink to reduce link count so it cannot use to directory
+    ln org new //create a file link using syscall link, cannot use on directory
+    ln -s org new //creat symbolic link
+
+Unix also support multi-file system, it links one system as a subtree to another. the corresponding problem is that inode index is no longer identical, so Unix forbidden syscall rename and link to create or tansform links between file systems.
+
+### symbolic links
+
+There are two kinds of link in Unix system, the hard link which links the filename to the real file(inode), but it could only link within one file system. Another kind of link could solve this problem is symbolic link. Instead of link filename to inode, it links to the filename, so there is no crash on same inode index. It is a special file type with type representer l. The link number, modification time and size is all different from the original one. But doing reading and writing, it is all the same, and if the original copy is deleted or has a new name, it will points to NULL. Also a symbolic link could point to directory.
+
+## Connection control
+
+Other than file, an operating system needs to interact with other devices like mouse, printer, screen. In this chapter, the content will be about similarity between directory and files, also the control of all these connection.
+
+### devices like a file
+
+Mostly, devices are in the direcory /root/dev and tty* for terminals. Not only do they have file names, they also support file operation functions like open, read, write, lseek, close and stat.For terminal, it does not support lseek as it act like a flow of date.
+Also, they have properties the usually file type field shows the unit of data transmition. What's special is the inode index field and the size filed, the inode index field contain the pointer points to the kernel program called driver, and the size data act as the parameter pass to the driver program.
+
+Consider how function read works, it first find the inode index throught the directory, if it is a file, it goes to the disk section and doing read, and if it is a device file, it go to the disk which containt driver program and run the read function in the driver program.
+
+### devices not like a file
+
+Here we use disk and terminal as two examples to show the difference of different file discriber.
+
+Disk:
+
+- disk have the property of buffering set O_SYNC will force the kernel to shut down the buffer mechanisem.
+- auto append mode is a solver of multiply writer write to the same file. It set O_APPEND, which will bound lseek and write to an atomoc operation, so the write of more than one writer will not cause race condition.
+
+Terminal:
+
